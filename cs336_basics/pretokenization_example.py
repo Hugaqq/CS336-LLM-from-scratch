@@ -5,7 +5,7 @@ from typing import BinaryIO
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
-    split_special_token: bytes,
+    split_special_tokens: list[bytes],
 ) -> list[int]:
     """
     Chunk the file into parts that can be counted independently.
@@ -17,6 +17,7 @@ def find_chunk_boundaries(
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0)
+
 
     chunk_size = file_size // desired_num_chunks
 
@@ -39,9 +40,12 @@ def find_chunk_boundaries(
                 break
 
             # Find the special token in the mini chunk
-            found_at = mini_chunk.find(split_special_token)
-            if found_at != -1:
-                chunk_boundaries[bi] = initial_position + found_at
+            final_found_at = -1
+            for special_token in split_special_tokens:
+                found_at = mini_chunk.rfind(special_token)
+                final_found_at = max(found_at, final_found_at)
+            if final_found_at != -1:
+                chunk_boundaries[bi] = initial_position + final_found_at
                 break
             initial_position += mini_chunk_size
 

@@ -161,3 +161,20 @@ cython_debug/
 
 .ruff_cache/
 *.zip
+
+# CS336 project data (large; download/sync separately)
+data/
+Extract/
+
+# Profiling output
+*.prof
+
+# Training artifacts
+checkpoints/
+logs/
+*.pt
+*.ckpt
+wandb/
+
+# macOS
+.DS_Store
