@@ -103,9 +103,9 @@ def gradient_clip(
             if parameter.grad is None:
                 continue
             ltwo_norm_square += torch.sum(parameter.grad * parameter.grad)
-        ltwo_norm = torch.sqrt(ltwo_norm_square)
-    if ltwo_norm >= max_value:
+        ltwo_norm = torch.sqrt(ltwo_norm_square) 
+        scale = torch.where(ltwo_norm >= max_value, max_value / (ltwo_norm + eps), torch.ones_like(ltwo_norm))
         for parameter in parameters:
-            if parameter.grad is None:
+            if parameter.grad is None :
                 continue
-            parameter.grad.data *= max_value / (ltwo_norm + eps)
+            parameter.grad.data.mul_(scale)
