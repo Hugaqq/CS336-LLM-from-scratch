@@ -323,7 +323,7 @@ class MutiHeadAttention(torch.nn.Module):
         self.num_heads = num_heads
         self.d_k = d_models // num_heads
 
-        self.register_buffer("mask", None)
+        self.register_buffer("mask", None, persistent=False)
 
         self.cal_q = Linear(d_models, d_models)
         if q_proj_weight is not None:
