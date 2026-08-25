@@ -9,14 +9,14 @@ def main():
         num_layers = 4
         d_model = 512
         d_ff = int((d_model * 8 / 3 // 64) * 64)
-        device = "cuda:0"
+        device = "cuda:3"
         dtype = torch.float32
         rope_theta = 10000
         num_heads = 16
         max_new_tokens = 2048
-        temperature = 0.8
+        temperature = 1
         top_p = 0.3
-        infer_tokenizer = tokenizer.from_files("./data/TinyStoriesV2-GPT4-vocab.json", "./data/TinyStoriesV2-GPT4-merges.txt", ["<|endoftext|>"])
+        infer_tokenizer = tokenizer.from_files("./data/owt_vocab.json", "./data/owt_merges.txt", ["<|endoftext|>"])
         infer_transformer_lm = transformer_lm(
                                 len(infer_tokenizer.vocab),
                                 context_length,

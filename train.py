@@ -19,7 +19,7 @@ import random
 def train(
         lr: float | None = None, 
         steps: int = 1000,
-        batch_size: int = 32,
+        batch_size: int = 64,
         num_layers: int = 4,
         d_model: int = 512,
         device: torch.device = "mps",
@@ -30,12 +30,17 @@ def train(
     np.random.seed(seed)
     random.seed(seed)
     os.makedirs("./data/checkpoint", exist_ok=True)
-    vocab_filepath = "./data/TinyStoriesV2-GPT4-vocab.json"
-    merges_fliepath = "./data/TinyStoriesV2-GPT4-merges.txt"
-    train_file = "./data/TinyStoriesV2-GPT4-train.txt"
-    valid_file = "./data/TinyStoriesV2-GPT4-valid.txt"
+    vocab_filepath = "./data/owt_vocab.json"
+    merges_fliepath = "./data/owt_merges.txt"
+    train_file = "./data/owt_train.txt"
+    valid_file = "./data/owt_valid.txt"
     real_tokenizer = tokenizer.from_files(vocab_filepath, merges_fliepath, ["<|endoftext|>"])
     context_length = 256
+
+    if "cuda" in device:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.benchmark = True
 
     if Path(train_file + "encode_results.npy").exists() is False:
         parallel_encode(train_file, vocab_filepath, merges_fliepath)
@@ -57,9 +62,11 @@ def train(
             
     Transformer = tc.transformer_lm(len(real_tokenizer.vocab), context_length, num_layers, d_model, d_ff, 10000, 16)
     Transformer.to(device)
+    Transformer = torch.compile(Transformer)
+
     opt = AdamW(Transformer.parameters())
         
-    config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
+    # config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
     if files:
         start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
     # if run_id_file.exists():
@@ -86,33 +93,34 @@ def train(
 
         opt.zero_grad()
 
-        train_lr = scheduler(t, lr, 1e-4, 0.1 * steps, steps)
+        train_lr = scheduler(t, lr, 1e-4, 0.01 * steps, steps)
         for group in opt.param_groups:
             group["lr"] = train_lr
 
-        x = Transformer.forward(in_dices)
-        x = rearrange(x, "batch_size  max_seq_len vocab_size -> (batch_size  max_seq_len) vocab_size")
-
-        loss = cross_entropy(x, targets)
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            x = Transformer(in_dices)
+            x = rearrange(x, "batch_size  max_seq_len vocab_size -> (batch_size  max_seq_len) vocab_size")
+            loss = cross_entropy(x.to(torch.float32), targets)
         loss.backward()
         gradient_clip(list(Transformer.parameters()),1.0)
         opt.step()  
         if t==0:
             print(f"iteration {t} with train loss : {loss.item()}")
             # print(f"iteration {t} with valid loss : {valid_loss}")
-        if t % 100 == 0 and t != 0:
+        if t % 800 == 0 and t != 0:
             Transformer.eval()
             print(f"iteration {t} with train loss : {loss.item()}")
             with torch.no_grad():
                 valid_loss_list = []
-                for i in range(valid_test_times):
-                    valid_in_dices, valid_targets = get_batch(valid_array, batch_size, context_length, device)
-                    valid_targets = rearrange(valid_targets, "batch_size seq_len -> (batch_size seq_len)")
-                    valid_x = Transformer.forward(valid_in_dices)
-                    valid_x = rearrange(valid_x, "batch_size max_seq_len vocab_size -> (batch_size max_seq_len) vocab_size")
-                    tmp_loss = cross_entropy(valid_x, valid_targets)
-                    valid_loss_list.append(tmp_loss)
-                valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    for i in range(valid_test_times):
+                        valid_in_dices, valid_targets = get_batch(valid_array, batch_size, context_length, device)
+                        valid_targets = rearrange(valid_targets, "batch_size seq_len -> (batch_size seq_len)")
+                        valid_x = Transformer(valid_in_dices)
+                        valid_x = rearrange(valid_x, "batch_size max_seq_len vocab_size -> (batch_size max_seq_len) vocab_size")
+                        tmp_loss = cross_entropy(valid_x.to(torch.float32), valid_targets)
+                        valid_loss_list.append(tmp_loss)
+                    valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
             print(f"iteration {t} with valid loss : {valid_loss}")
 
             # wandb.log({"train/loss": loss.item(), "step":t})
@@ -147,7 +155,6 @@ def tokenizer_encode_worker(args):
         return np.array([], dtype = np.uint16)
     else:
         real_tokenizer = tokenizer.from_files(vocab_filepath, merges_filepath, ["<|endoftext|>"])
-        pre_array = []
         with open(input_path, "rb") as file:
             file.seek(start)
             text = file.read(end - start).decode("utf-8", errors = "ignore")
@@ -156,7 +163,7 @@ def tokenizer_encode_worker(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type = float, default = 1e-3)
-    parser.add_argument("--step", type = int, default = 8000)
+    parser.add_argument("--step", type = int, default = 16000)
     parser.add_argument("--seed",type = int, default = 42)
     args = parser.parse_args()
-    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:5")
+    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:7")
