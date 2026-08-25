@@ -39,18 +39,17 @@ def train(
 
     if Path(train_file + "encode_results.npy").exists() is False:
         parallel_encode(train_file, vocab_filepath, merges_fliepath)
-        train_array = np.load(train_file + "encode_results.npy", mmap_mode = "r")
+    train_array = np.load(train_file + "encode_results.npy", mmap_mode = "r")
     
     if Path(valid_file + "encode_results.npy").exists() is False:
         parallel_encode(valid_file, vocab_filepath, merges_fliepath)
-        valid_array = np.load(valid_file + "encode_results.npy", mmap_mode = "r")
+    valid_array = np.load(valid_file + "encode_results.npy", mmap_mode = "r")
 
     dir_ = "./data/checkpoint"
     start_step = 0
     files = list(Path(dir_).glob("ckpt_step_*.pt"))
     if files:
         latest = max(files, key = lambda p: int(p.stem.rsplit("_", 1)[-1]))
-#       start_step = latest.stem.rsplit("_", 1)[-1]
 
     run_id_file = Path("wandb_run_id.txt")
 
@@ -61,15 +60,16 @@ def train(
     opt = AdamW(Transformer.parameters())
         
     config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
-    if files and run_id_file.exists():
+    if files:
         run_id = run_id_file.read_text().strip()
+    if run_id_file.exists():
         wandb.init(
             project = "cs336-assignment",
             config = config,
             resume = "allow",
             id = run_id
         )
-        start_step = ckpt.load_checkpoint(latest, Transformer, opt)
+        start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
     else:
         wandb.init(
             project = "cs336-assignment",
@@ -98,11 +98,11 @@ def train(
         gradient_clip(list(Transformer.parameters()),1.0)
         opt.step()  
         if t==0:
-            print(f"iteration {t} with train loss : {loss}")
+            print(f"iteration {t} with train loss : {loss.item()}")
             # print(f"iteration {t} with valid loss : {valid_loss}")
         if t % 100 == 0 and t != 0:
             Transformer.eval()
-            print(f"iteration {t} with train loss : {loss}")
+            print(f"iteration {t} with train loss : {loss.item()}")
             with torch.no_grad():
                 valid_loss_list = []
                 for i in range(valid_test_times):
@@ -115,13 +115,13 @@ def train(
                 valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
             print(f"iteration {t} with valid loss : {valid_loss}")
 
-            wandb.log({"train/loss": loss.item(), "step":t})
-            wandb.log({"val/loss": valid_loss.item(), "step":t})
+            # wandb.log({"train/loss": loss.item(), "step":t})
+            # wandb.log({"val/loss": valid_loss.item(), "step":t})
 
             checkpoint_path = f"./data/checkpoint/ckpt_step_{t}.pt"
             ckpt.save_checkpoint(Transformer, opt, t, checkpoint_path)
             Transformer.train()
-    
+    ckpt.save_checkpoint(Transformer, opt, steps, "./data/checkpoint/ckpt_final.pt")
 def parallel_encode(input_path: str, vocab_filepath: str, merges_filepath: str) -> str:
     num_processes = os.cpu_count()
     num_chunks = num_processes * 16
@@ -156,7 +156,7 @@ def tokenizer_encode_worker(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type = float, default = 1e-3)
-    parser.add_argument("--step", type = int, default = 5000)
+    parser.add_argument("--step", type = int, default = 8000)
     parser.add_argument("--seed",type = int, default = 42)
     args = parser.parse_args()
-    train(lr = args.lr, steps = args.step, seed = args.seed)
+    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:5")

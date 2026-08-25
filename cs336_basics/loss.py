@@ -10,5 +10,5 @@ def cross_entropy(
     m = torch.amax(objects, -1)
     delta = objects - m.unsqueeze(-1)
 
-    l = m + torch.log(torch.sum(torch.exp(delta), -1)) - objects[torch.arange(objects.shape[0]), targets]
+    l = m + torch.log(torch.sum(torch.exp(delta), -1)) - objects[torch.arange(objects.shape[0], device = objects.device), targets]
     return torch.mean(l, 0)
