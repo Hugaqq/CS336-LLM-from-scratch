@@ -109,7 +109,7 @@ def train(
         if t==0:
             print(f"iteration {t} with train loss : {loss.item()}")
             # print(f"iteration {t} with valid loss : {valid_loss}")
-        if t % 800 == 0 and t != 0:
+        if t % 2000 == 0 and t != 0:
             Transformer.eval()
             print(f"iteration {t} with train loss : {loss.item()}")
             with torch.no_grad():
