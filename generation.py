@@ -2,6 +2,7 @@ import torch
 from cs336_basics.Tokenizer.tokenizer import tokenizer
 from cs336_basics.checkpointing import load_checkpoint
 from cs336_basics.transformer_component import transformer_lm
+from cs336_basics.optimizer import AdamW
 
 def main():
         context_length = 256
@@ -24,16 +25,16 @@ def main():
                                 d_ff,
                                 rope_theta,
                                 num_heads
-                                )
-        opt = torch.optim.Optimizer
+                                ).to(device)
+        opt = AdamW(infer_transformer_lm.parameters())
         load_checkpoint("./data/checkpoint/ckpt_final.pt",
                         infer_transformer_lm,
                         opt,
                         device)
         prompts = input()
-        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.uint16)
+        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.long).to(device)
         output_token_id_list = []
-        for new_token_id in generate(infer_transformer_lm, prompts_id, max_new_tokens, temperature, top_p, infer_tokenizer.reverse_vocab["<|endoftext|>"].decode("utf-8"), context_length):
+        for new_token_id in generate(infer_transformer_lm, prompts_id, max_new_tokens, temperature, top_p, infer_tokenizer.reverse_vocab["<|endoftext|>".encode("utf-8")], context_length):
             output_token_id_list.append(new_token_id)
         output_str = infer_tokenizer.decode(output_token_id_list)
         print(output_str)

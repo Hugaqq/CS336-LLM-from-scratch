@@ -61,15 +61,15 @@ def train(
         
     config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
     if files:
-        run_id = run_id_file.read_text().strip()
+        start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
     if run_id_file.exists():
+        run_id = run_id_file.read_text().strip()
         wandb.init(
             project = "cs336-assignment",
             config = config,
             resume = "allow",
             id = run_id
         )
-        start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
     else:
         wandb.init(
             project = "cs336-assignment",
