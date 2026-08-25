@@ -62,21 +62,21 @@ def train(
     config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
     if files:
         start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
-    if run_id_file.exists():
-        run_id = run_id_file.read_text().strip()
-        wandb.init(
-            project = "cs336-assignment",
-            config = config,
-            resume = "allow",
-            id = run_id
-        )
-    else:
-        wandb.init(
-            project = "cs336-assignment",
-            name = "baseline_0",
-            config = config,
-        )
-        run_id_file.write_text(wandb.run.id)
+    # if run_id_file.exists():
+    #     run_id = run_id_file.read_text().strip()
+    #     wandb.init(
+    #         project = "cs336-assignment",
+    #         config = config,
+    #         resume = "allow",
+    #         id = run_id
+    #     )
+    # else:
+    #     wandb.init(
+    #         project = "cs336-assignment",
+    #         name = "baseline_0",
+    #         config = config,
+    #     )
+    #     run_id_file.write_text(wandb.run.id)
         
     valid_test_times = 20
     
@@ -115,8 +115,8 @@ def train(
                 valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
             print(f"iteration {t} with valid loss : {valid_loss}")
 
-            wandb.log({"train/loss": loss.item(), "step":t})
-            wandb.log({"val/loss": valid_loss.item(), "step":t})
+            # wandb.log({"train/loss": loss.item(), "step":t})
+            # wandb.log({"val/loss": valid_loss.item(), "step":t})
 
             checkpoint_path = f"./data/checkpoint/ckpt_step_{t}.pt"
             ckpt.save_checkpoint(Transformer, opt, t, checkpoint_path)
