@@ -59,8 +59,10 @@ def train(
     run_id_file = Path("wandb_run_id.txt")
 
     d_ff = 2048
+    rope_theta = 10000
+    num_heads = 12
             
-    Transformer = tc.transformer_lm(len(real_tokenizer.vocab), context_length, num_layers, d_model, d_ff, 10000, 16)
+    Transformer = tc.transformer_lm(len(real_tokenizer.vocab), context_length, num_layers, d_model, d_ff, rope_theta, num_heads)
     Transformer.to(device)
     Transformer = torch.compile(Transformer)
 
