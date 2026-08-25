@@ -19,9 +19,9 @@ import random
 def train(
         lr: float | None = None, 
         steps: int = 1000,
-        batch_size: int = 64,
-        num_layers: int = 4,
-        d_model: int = 512,
+        batch_size: int = 32,
+        num_layers: int = 12,
+        d_model: int = 768,
         device: torch.device = "mps",
         dtype: torch.dtype = torch.float32,
         seed: int = 42
@@ -58,7 +58,7 @@ def train(
 
     run_id_file = Path("wandb_run_id.txt")
 
-    d_ff = int((d_model * 8 / 3 // 64) * 64)
+    d_ff = 2048
             
     Transformer = tc.transformer_lm(len(real_tokenizer.vocab), context_length, num_layers, d_model, d_ff, 10000, 16)
     Transformer.to(device)
@@ -162,8 +162,8 @@ def tokenizer_encode_worker(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type = float, default = 1e-3)
+    parser.add_argument("--lr", type = float, default = 6e-4)
     parser.add_argument("--step", type = int, default = 16000)
     parser.add_argument("--seed",type = int, default = 42)
     args = parser.parse_args()
-    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:7")
+    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:4")
