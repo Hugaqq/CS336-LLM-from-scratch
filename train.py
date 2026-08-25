@@ -115,8 +115,8 @@ def train(
                 valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
             print(f"iteration {t} with valid loss : {valid_loss}")
 
-            # wandb.log({"train/loss": loss.item(), "step":t})
-            # wandb.log({"val/loss": valid_loss.item(), "step":t})
+            wandb.log({"train/loss": loss.item(), "step":t})
+            wandb.log({"val/loss": valid_loss.item(), "step":t})
 
             checkpoint_path = f"./data/checkpoint/ckpt_step_{t}.pt"
             ckpt.save_checkpoint(Transformer, opt, t, checkpoint_path)
