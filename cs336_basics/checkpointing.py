@@ -28,7 +28,7 @@ def load_checkpoint(
     now_torch_compile_flag = False
     past_torch_compile_flag = False
     for key, value in ckpt["model"].items():
-        if key.startwith("_orig_mod."):
+        if key.startswith("_orig_mod."):
             past_torch_compile_flag = True
         break
     for key, value in model.state_dict().items():
