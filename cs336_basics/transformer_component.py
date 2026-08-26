@@ -25,18 +25,24 @@ class transformer_lm(torch.nn.Module):
         self.rms_norm_last = Rms_Norm(d_model)
         self.transformer_block_list = torch.nn.ModuleList()
         self.output_linear_layer = Linear(d_model, self.vocab_size)
+
+        # weights initialization
+        for i in range(self.num_layers):
+            transformer_block_i = transformer_block(d_model, num_heads, d_ff, rope_theta, context_length)
+            self.transformer_block_list.append(transformer_block_i)
+
+        ### load specific wieghts by adapter tests ### 
+        ### JUST FOR TEST !!! ###
         if weights is not None:
             self.embedding_layer.weight.data = weights.get("token_embeddings.weight")
+            self.transformer_block_list = torch.nn.ModuleList()
             for i in range(self.num_layers):
                 block_i_weights = self._generate_weights(weights, i)
                 transformer_block_i = transformer_block(d_model, num_heads, d_ff, rope_theta, context_length, block_i_weights)
                 self.transformer_block_list.append(transformer_block_i)
             self.rms_norm_last.weight.data = weights.get("ln_final.weight")     
             self.output_linear_layer.weight.data = weights.get("lm_head.weight")
-        else :
-            for i in range(self.num_layers):
-                transformer_block_i = transformer_block(d_model, num_heads, d_ff, rope_theta, context_length)
-                self.transformer_block_list.append(transformer_block_i)
+            
             
 
     def forward(
@@ -75,12 +81,10 @@ class transformer_block(torch.nn.Module):
         self.weights = weights
 
         self.rms_norm_layer1 = Rms_Norm(d_model)
-        
-        self.rms_norm_layer1_cal = self.rms_norm_layer1.forward
-
         self.rms_norm_layer2 = Rms_Norm(d_model)
-        
-        self.rms_norm_layer2_cal = self.rms_norm_layer2.forward
+
+        self.ffn = FFN_SwiGLU(d_model, d_ff)
+        self.mha = MutiHeadAttention(self.d_model, self.num_heads, max_seq_len, theta = self.theta)
 
         if weights is not None:
             self.rms_norm_layer1.weight.data = self.weights["ln1.weight"]
@@ -96,14 +100,7 @@ class transformer_block(torch.nn.Module):
                                          self.weights["attn.v_proj.weight"],
                                          self.weights["attn.output_proj.weight"],
                                          self.theta)
-        else:
-            self.ffn = FFN_SwiGLU(d_model, d_ff)
-            self.mha = MutiHeadAttention(self.d_model, self.num_heads, max_seq_len, theta = self.theta)
-        
-        self.ffn_cal = self.ffn.forward
-
-        
-
+            
     def forward(
             self,
             x: Float[Tensor, "... seq_len d_model"]
@@ -116,14 +113,14 @@ class transformer_block(torch.nn.Module):
             self, 
             x: Float[Tensor, "... seq_len d_model"]
     )  -> Tensor:
-        x = self.rms_norm_layer2_cal(x)
-        return self.ffn_cal(x)
+        x = self.rms_norm_layer2.forward(x)
+        return self.ffn.forward(x)
 
     def _MHA_layer(
             self,
             x : Float[Tensor, "... seq_len d_model"]
     ) -> Tensor:
-        x = self.rms_norm_layer1_cal(x)
+        x = self.rms_norm_layer1.forward(x)
         return self.mha.forward(x, torch.arange(x.shape[-2]), True)
 
 
@@ -308,7 +305,7 @@ def attention(
 class MutiHeadAttention(torch.nn.Module):
     def __init__(
             self,
-            d_models: int,
+            d_model: int,
             num_heads: int,
             max_seq_len: int | None = None,
             q_proj_weight: Float[Tensor, " d_model d_model"] | None = None,
@@ -319,22 +316,22 @@ class MutiHeadAttention(torch.nn.Module):
     ) : 
         super().__init__()
 
-        self.d_models = d_models
+        self.d_model = d_model
         self.num_heads = num_heads
-        self.d_k = d_models // num_heads
+        self.d_k = d_model // num_heads
 
         self.register_buffer("mask", None, persistent=False)
 
-        self.cal_q = Linear(d_models, d_models)
+        self.cal_q = Linear(d_model, d_model)
         if q_proj_weight is not None:
             self.cal_q.weight.data = q_proj_weight
-        self.cal_k = Linear(d_models, d_models)
+        self.cal_k = Linear(d_model, d_model)
         if k_proj_weight is not None:
             self.cal_k.weight.data = k_proj_weight
-        self.cal_v = Linear(d_models, d_models)
+        self.cal_v = Linear(d_model, d_model)
         if v_proj_weight is not None:
             self.cal_v.weight.data = v_proj_weight
-        self.cal_o = Linear(d_models, d_models)
+        self.cal_o = Linear(d_model, d_model)
         if o_proj_weight is not None:
             self.cal_o.weight.data = o_proj_weight
         self.theta = theta
