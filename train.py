@@ -15,16 +15,10 @@ import time
 import argparse
 import wandb
 import random
+from configs.base import base_config, BaseConfig
 
 def train(
-        lr: float | None = None, 
-        steps: int = 1000,
-        batch_size: int = 32,
-        num_layers: int = 12,
-        d_model: int = 768,
-        device: torch.device = "mps",
-        dtype: torch.dtype = torch.float32,
-        seed: int = 42
+        config: BaseConfig
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -163,9 +157,5 @@ def tokenizer_encode_worker(args):
             return np.array(real_tokenizer.encode(text), dtype = np.uint16)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type = float, default = 6e-4)
-    parser.add_argument("--step", type = int, default = 16000)
-    parser.add_argument("--seed",type = int, default = 42)
-    args = parser.parse_args()
+    
     train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:4")
