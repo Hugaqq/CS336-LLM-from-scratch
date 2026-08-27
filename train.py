@@ -16,20 +16,36 @@ import argparse
 import wandb
 import random
 from configs.base import base_config, BaseConfig
+from dataclasses import dataclass, fields
 
 def train(
-        config: BaseConfig
+    lr: float = 1e-3,
+    steps: int = 16000,
+    batch_size : int = 64,
+    num_layers: int = 12,
+    num_heads: int = 12,
+    d_model: int = 768,
+    d_ff: int = 2048,
+    rope_theta:int = 10000,
+    seed: int = 42,
+    context_length: int = 256,
+    device: torch.device = "cuda",
+    use_wandb: bool = False,
+    data_root: Path = "./data",
+    dataset: Path = "owt",
+    checkpoint_root: Path = "./checkpoint",
+    running_cfg: BaseConfig | None = None
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+
     os.makedirs("./data/checkpoint", exist_ok=True)
     vocab_filepath = "./data/owt_vocab.json"
     merges_fliepath = "./data/owt_merges.txt"
     train_file = "./data/owt_train.txt"
     valid_file = "./data/owt_valid.txt"
     real_tokenizer = tokenizer.from_files(vocab_filepath, merges_fliepath, ["<|endoftext|>"])
-    context_length = 256
 
     if "cuda" in device:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -62,25 +78,27 @@ def train(
 
     opt = AdamW(Transformer.parameters())
         
-    # config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
     if files:
         start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
-    # if run_id_file.exists():
-    #     run_id = run_id_file.read_text().strip()
-    #     wandb.init(
-    #         project = "cs336-assignment",
-    #         config = config,
-    #         resume = "allow",
-    #         id = run_id
-    #     )
-    # else:
-    #     wandb.init(
-    #         project = "cs336-assignment",
-    #         name = "baseline_0",
-    #         config = config,
-    #     )
-    #     run_id_file.write_text(wandb.run.id)
-        
+
+    if use_wandb is True:
+        wandb_config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
+        if run_id_file.exists():
+            run_id = run_id_file.read_text().strip()
+            wandb.init(
+                project = "cs336-assignment",
+                config = wandb_config,
+                resume = "allow",
+                id = run_id
+            )
+        else:
+            wandb.init(
+                project = "cs336-assignment",
+                name = "baseline_0",
+                config = wandb_config,
+            )
+            run_id_file.write_text(wandb.run.id)
+            
     valid_test_times = 20
     
     for t in range(start_step, steps):
@@ -156,6 +174,26 @@ def tokenizer_encode_worker(args):
             text = file.read(end - start).decode("utf-8", errors = "ignore")
             return np.array(real_tokenizer.encode(text), dtype = np.uint16)
 
-if __name__ == "__main__":
+def construct_parser_args(parser: argparse.ArgumentParser) -> BaseConfig:
     
-    train(lr = args.lr, steps = args.step, seed = args.seed, device = "cuda:4")
+    for f in fields(BaseConfig):
+        if not f.init:
+            continue
+        if f.type is bool:
+            parser.add_argument(f"--{f.name}", action = "store_true")
+        else:
+                parser.add_argument(f"--{f.name}", type = f.type, default = f.default)
+
+    args = parser.parse_args()
+    cfg = BaseConfig(**vars(args))
+
+    parser.add_argument("--use_wandb", action = "store_true")
+    parser.add_argument("--device", type = torch.device, default="cuda")
+
+    return cfg
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    running_cfg = construct_parser_args(parser)    
+    args = parser.parse_args()
+    train(**vars(args), running_conifg = running_cfg)
