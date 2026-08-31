@@ -100,7 +100,7 @@
   │
   └── data/
       Raw datasets, tokenizer files, and encoded token arrays
-
+  ```
   ## Project Workflow
 
   The project follows the pipeline below:
@@ -124,7 +124,7 @@
   Optimization and checkpointing
      ↓
   Autoregressive generation
-  ```
+  
   The baseline configuration in configs/base.py acts as the shared source of truth for model
   dimensions, training hyperparameters, dataset selection, and derived file paths.
 
