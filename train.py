@@ -11,7 +11,7 @@ import argparse
 import wandb
 import random
 from configs.base import BaseConfig, base_config
-from tokenization import tokenize
+from scripts.tokenize_dataset import tokenize
 
 def train(
     running_config: BaseConfig = base_config,

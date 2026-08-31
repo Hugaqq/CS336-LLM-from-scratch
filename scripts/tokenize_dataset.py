@@ -25,8 +25,11 @@ def parallel_encode(
         specialtokens_list: list[str],
         input_path: str, 
         ) -> str:
-    num_processes = max(1, os.cpu_count() * 16)
-    num_chunks = num_processes
+    if os.cpu_count() is None or os.cpu_count() < 1:
+        num_processes = 1
+    else :
+        num_processes = os.cpu_count()
+    num_chunks = num_processes * 4
 
     with open(input_path, "rb") as file:
         specialtokens_list = [token.encode("utf-8") for token in specialtokens_list]

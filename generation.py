@@ -7,11 +7,12 @@ from configs.base import base_config, BaseConfig
 
 def main(
         running_config : BaseConfig = base_config,
+        device: torch.device = "cuda",
         max_new_tokens: int = 2048,
         temperature: int = 1,
         top_p:float = 0.3
         ):
-        infer_tokenizer = tokenizer.from_files("./data/owt_vocab.json", "./data/owt_merges.txt", ["<|endoftext|>"])
+        infer_tokenizer = tokenizer.from_files(running_config.vocab_filepath, running_config.merges_filepath, running_config.specialtokens_list)
         infer_transformer_lm = transformer_lm(
                                 len(infer_tokenizer.vocab),
                                 running_config.context_length,
@@ -20,16 +21,16 @@ def main(
                                 running_config.d_ff,
                                 running_config.rope_theta,
                                 running_config.num_heads
-                                ).to(running_config.device)
+                                ).to(device)
         opt = AdamW(infer_transformer_lm.parameters())
-        load_checkpoint("./data/checkpoint/ckpt_final.pt",
+        load_checkpoint(running_config.checkpoint_root / "ckpt_final.pt",
                         infer_transformer_lm,
                         opt,
-                        running_config.device)
+                        device)
         prompts = input()
-        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.long).to(running_config.device)
+        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.long).to(device)
         output_token_id_list = []
-        for new_token_id in generate(infer_transformer_lm, prompts_id, max_new_tokens, temperature, top_p, infer_tokenizer.reverse_vocab["<|endoftext|>".encode("utf-8")], context_length):
+        for new_token_id in generate(infer_transformer_lm, prompts_id, max_new_tokens, temperature, top_p, infer_tokenizer.reverse_vocab["<|endoftext|>".encode("utf-8")], running_config.context_length):
             output_token_id_list.append(new_token_id)
         output_str = infer_tokenizer.decode(output_token_id_list)
         print(output_str)
