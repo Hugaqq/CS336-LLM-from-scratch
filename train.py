@@ -11,68 +11,47 @@ from einops import rearrange
 from pathlib import Path
 import os
 import multiprocessing as mp
-import time
 import argparse
 import wandb
 import random
-from configs.base import base_config, BaseConfig
+from configs.base import BaseConfig, base_config
 from dataclasses import dataclass, fields
+import dataclasses
 
 def train(
-    lr: float = 1e-3,
-    steps: int = 16000,
-    batch_size : int = 64,
-    num_layers: int = 12,
-    num_heads: int = 12,
-    d_model: int = 768,
-    d_ff: int = 2048,
-    rope_theta:int = 10000,
-    seed: int = 42,
-    context_length: int = 256,
+    running_config: BaseConfig = base_config,
     device: torch.device = "cuda",
-    use_wandb: bool = False,
-    data_root: Path = "./data",
-    dataset: Path = "owt",
-    checkpoint_root: Path = "./checkpoint",
-    running_cfg: BaseConfig | None = None
+    use_wandb: bool = False
 ):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
+    torch.manual_seed(running_config.seed)
+    np.random.seed(running_config.seed)
+    random.seed(running_config.seed)
+    valid_test_times = 20
+    
+    real_tokenizer = tokenizer.from_files(running_config.vocab_filepath, running_config.merges_filepath, running_config.specialtokens_list)
 
-    os.makedirs("./data/checkpoint", exist_ok=True)
-    vocab_filepath = "./data/owt_vocab.json"
-    merges_fliepath = "./data/owt_merges.txt"
-    train_file = "./data/owt_train.txt"
-    valid_file = "./data/owt_valid.txt"
-    real_tokenizer = tokenizer.from_files(vocab_filepath, merges_fliepath, ["<|endoftext|>"])
-
-    if "cuda" in device:
+    if device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
 
-    if Path(train_file + "encode_results.npy").exists() is False:
-        parallel_encode(train_file, vocab_filepath, merges_fliepath)
-    train_array = np.load(train_file + "encode_results.npy", mmap_mode = "r")
-    
-    if Path(valid_file + "encode_results.npy").exists() is False:
-        parallel_encode(valid_file, vocab_filepath, merges_fliepath)
-    valid_array = np.load(valid_file + "encode_results.npy", mmap_mode = "r")
 
-    dir_ = "./data/checkpoint"
+    if running_config.train_tokens.exists() is False:
+        parallel_encode(running_config.train_file, running_config.vocab_filepath, running_config.merges_filepath)
+    train_array = np.load(running_config.train_tokens, mmap_mode = "r")
+    
+    if running_config.valid_tokens.exists() is False:
+        parallel_encode(running_config.valid_file, running_config.vocab_filepath, running_config.merges_filepath)
+    valid_array = np.load(running_config.valid_tokens, mmap_mode = "r")
+
     start_step = 0
-    files = list(Path(dir_).glob("ckpt_step_*.pt"))
+    files = list(Path(running_config.checkpoint_root).glob("ckpt_step_*.pt"))
     if files:
         latest = max(files, key = lambda p: int(p.stem.rsplit("_", 1)[-1]))
 
     run_id_file = Path("wandb_run_id.txt")
-
-    d_ff = 2048
-    rope_theta = 10000
-    num_heads = 12
             
-    Transformer = tc.transformer_lm(len(real_tokenizer.vocab), context_length, num_layers, d_model, d_ff, rope_theta, num_heads)
+    Transformer = tc.transformer_lm(len(real_tokenizer.vocab), running_config.context_length, running_config.num_layers, running_config.d_model, running_config.d_ff, running_config.rope_theta, running_config.num_heads)
     Transformer.to(device)
     Transformer = torch.compile(Transformer)
 
@@ -82,7 +61,7 @@ def train(
         start_step = ckpt.load_checkpoint(latest, Transformer, opt, device)
 
     if use_wandb is True:
-        wandb_config = {"d_model": d_model, "lr": lr, "batch_size": batch_size, "steps": steps}
+        wandb_config = {"d_model": running_config.d_model, "lr": running_config.lr, "batch_size": running_config.batch_size, "steps": running_config.steps}
         if run_id_file.exists():
             run_id = run_id_file.read_text().strip()
             wandb.init(
@@ -98,16 +77,14 @@ def train(
                 config = wandb_config,
             )
             run_id_file.write_text(wandb.run.id)
-            
-    valid_test_times = 20
     
-    for t in range(start_step, steps):
-        in_dices, targets = get_batch(train_array, batch_size, context_length, device = device)
+    for t in range(start_step, running_config.steps):
+        in_dices, targets = get_batch(train_array, running_config.batch_size, running_config.context_length, device = device)
         targets = rearrange(targets, "batch_size seq_len -> (batch_size seq_len)")
 
         opt.zero_grad()
 
-        train_lr = scheduler(t, lr, 1e-4, 0.01 * steps, steps)
+        train_lr = scheduler(t, running_config.lr, 1e-4, 0.01 * running_config.steps, running_config.steps)
         for group in opt.param_groups:
             group["lr"] = train_lr
 
@@ -118,17 +95,14 @@ def train(
         loss.backward()
         gradient_clip(list(Transformer.parameters()),1.0)
         opt.step()  
-        if t==0:
-            print(f"iteration {t} with train loss : {loss.item()}")
-            # print(f"iteration {t} with valid loss : {valid_loss}")
-        if t % 2000 == 0 and t != 0:
+        if t % 2000 == 0:
             Transformer.eval()
             print(f"iteration {t} with train loss : {loss.item()}")
             with torch.no_grad():
                 valid_loss_list = []
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                     for i in range(valid_test_times):
-                        valid_in_dices, valid_targets = get_batch(valid_array, batch_size, context_length, device)
+                        valid_in_dices, valid_targets = get_batch(valid_array, running_config.batch_size, running_config.context_length, device)
                         valid_targets = rearrange(valid_targets, "batch_size seq_len -> (batch_size seq_len)")
                         valid_x = Transformer(valid_in_dices)
                         valid_x = rearrange(valid_x, "batch_size max_seq_len vocab_size -> (batch_size max_seq_len) vocab_size")
@@ -137,13 +111,13 @@ def train(
                     valid_loss = torch.stack(valid_loss_list, dim = 0).mean(dim = 0)
             print(f"iteration {t} with valid loss : {valid_loss}")
 
-            # wandb.log({"train/loss": loss.item(), "step":t})
-            # wandb.log({"val/loss": valid_loss.item(), "step":t})
-
-            checkpoint_path = f"./data/checkpoint/ckpt_step_{t}.pt"
-            ckpt.save_checkpoint(Transformer, opt, t, checkpoint_path)
+            if t != 0 and use_wandb is True:
+                wandb.log({"train/loss": loss.item(), "step":t})
+                wandb.log({"val/loss": valid_loss.item(), "step":t})
+            if t != 0:
+                ckpt.save_checkpoint(Transformer, opt, t, running_config.checkpoint_root / f"ckpt_step_{t}.pt")
             Transformer.train()
-    ckpt.save_checkpoint(Transformer, opt, steps, "./data/checkpoint/ckpt_final.pt")
+    ckpt.save_checkpoint(Transformer, opt, running_config.steps, running_config.checkpoint_root / "ckpt_final.pt")
 def parallel_encode(input_path: str, vocab_filepath: str, merges_filepath: str) -> str:
     num_processes = os.cpu_count()
     num_chunks = num_processes * 16
@@ -177,12 +151,12 @@ def tokenizer_encode_worker(args):
 def construct_parser_args(parser: argparse.ArgumentParser) -> BaseConfig:
     
     for f in fields(BaseConfig):
-        if not f.init:
+        if not f.init or f.default == dataclasses.MISSING:
             continue
         if f.type is bool:
             parser.add_argument(f"--{f.name}", action = "store_true")
         else:
-                parser.add_argument(f"--{f.name}", type = f.type, default = f.default)
+            parser.add_argument(f"--{f.name}", type = f.type, default = f.default)
 
     args = parser.parse_args()
     cfg = BaseConfig(**vars(args))
@@ -194,6 +168,6 @@ def construct_parser_args(parser: argparse.ArgumentParser) -> BaseConfig:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    running_cfg = construct_parser_args(parser)    
+    running_config = construct_parser_args(parser)    
     args = parser.parse_args()
-    train(**vars(args), running_conifg = running_cfg)
+    train(running_config, args.device, args.use_wandb)
