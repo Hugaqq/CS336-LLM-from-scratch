@@ -4,19 +4,14 @@ import cs336_basics.checkpointing as ckpt
 from cs336_basics.optimizer import AdamW, scheduler, gradient_clip
 from cs336_basics.data_loader import get_batch
 import cs336_basics.transformer_component as tc
-from cs336_basics.BPE.bpe import find_chunk_boundaries
-from cs336_basics.Tokenizer.tokenizer import tokenizer
 from cs336_basics.loss import cross_entropy
 from einops import rearrange
 from pathlib import Path
-import os
-import multiprocessing as mp
 import argparse
 import wandb
 import random
 from configs.base import BaseConfig, base_config
-from dataclasses import dataclass, fields
-import dataclasses
+from tokenization import tokenize
 
 def train(
     running_config: BaseConfig = base_config,
@@ -27,22 +22,13 @@ def train(
     np.random.seed(running_config.seed)
     random.seed(running_config.seed)
     valid_test_times = 20
-    
-    real_tokenizer = tokenizer.from_files(running_config.vocab_filepath, running_config.merges_filepath, running_config.specialtokens_list)
+
+    train_array, valid_array, vocab_size = tokenize(running_config)
 
     if device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
-
-
-    if running_config.train_tokens.exists() is False:
-        parallel_encode(running_config.train_file, running_config.vocab_filepath, running_config.merges_filepath)
-    train_array = np.load(running_config.train_tokens, mmap_mode = "r")
-    
-    if running_config.valid_tokens.exists() is False:
-        parallel_encode(running_config.valid_file, running_config.vocab_filepath, running_config.merges_filepath)
-    valid_array = np.load(running_config.valid_tokens, mmap_mode = "r")
 
     start_step = 0
     files = list(Path(running_config.checkpoint_root).glob("ckpt_step_*.pt"))
@@ -51,7 +37,7 @@ def train(
 
     run_id_file = Path("wandb_run_id.txt")
             
-    Transformer = tc.transformer_lm(len(real_tokenizer.vocab), running_config.context_length, running_config.num_layers, running_config.d_model, running_config.d_ff, running_config.rope_theta, running_config.num_heads)
+    Transformer = tc.transformer_lm(vocab_size, running_config.context_length, running_config.num_layers, running_config.d_model, running_config.d_ff, running_config.rope_theta, running_config.num_heads)
     Transformer.to(device)
     Transformer = torch.compile(Transformer)
 
@@ -118,56 +104,11 @@ def train(
                 ckpt.save_checkpoint(Transformer, opt, t, running_config.checkpoint_root / f"ckpt_step_{t}.pt")
             Transformer.train()
     ckpt.save_checkpoint(Transformer, opt, running_config.steps, running_config.checkpoint_root / "ckpt_final.pt")
-def parallel_encode(input_path: str, vocab_filepath: str, merges_filepath: str) -> str:
-    num_processes = os.cpu_count()
-    num_chunks = num_processes * 16
-
-    with open(input_path, "rb") as file:
-        points_list = find_chunk_boundaries(file, num_chunks, "<|endoftext|>".encode("utf-8"))
-    boundaries_list = zip(points_list[:-1], points_list[1:])
-    tasks = []
-
-    for boundary in boundaries_list:
-        tasks.append((boundary[0], boundary[1], input_path, vocab_filepath, merges_filepath))
-
-    with mp.Pool(num_processes) as pool:
-        results = list(pool.imap(tokenizer_encode_worker, tasks))
-        whole_array = np.concatenate(results, axis = 0)
-        store_npy = np.lib.format.open_memmap(input_path + "encode_results.npy", mode = "w+", dtype = np.uint16, shape = (len(whole_array),))
-        store_npy[:] = whole_array
-        store_npy.flush()
-
-def tokenizer_encode_worker(args):
-    start, end, input_path, vocab_filepath, merges_filepath = args
-    if start == end:
-        return np.array([], dtype = np.uint16)
-    else:
-        real_tokenizer = tokenizer.from_files(vocab_filepath, merges_filepath, ["<|endoftext|>"])
-        with open(input_path, "rb") as file:
-            file.seek(start)
-            text = file.read(end - start).decode("utf-8", errors = "ignore")
-            return np.array(real_tokenizer.encode(text), dtype = np.uint16)
-
-def construct_parser_args(parser: argparse.ArgumentParser) -> BaseConfig:
-    
-    for f in fields(BaseConfig):
-        if not f.init or f.default == dataclasses.MISSING:
-            continue
-        if f.type is bool:
-            parser.add_argument(f"--{f.name}", action = "store_true")
-        else:
-            parser.add_argument(f"--{f.name}", type = f.type, default = f.default)
-
-    args = parser.parse_args()
-    cfg = BaseConfig(**vars(args))
-
-    parser.add_argument("--use_wandb", action = "store_true")
-    parser.add_argument("--device", type = torch.device, default="cuda")
-
-    return cfg
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    running_config = construct_parser_args(parser)    
+    parser.add_argument("--use_wandb", action = "store_true")
+    parser.add_argument("--device", type = torch.device, default="cuda")    
     args = parser.parse_args()
+    running_config = base_config
     train(running_config, args.device, args.use_wandb)

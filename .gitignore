@@ -180,3 +180,11 @@ wandb/
 
 # macOS
 .DS_Store
+
+# repo other
+*.pdf
+CHANGELOG.md
+CLAUDE.md
+tests/
+LICENSE
+make_submission.sh

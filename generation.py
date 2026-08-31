@@ -3,36 +3,31 @@ from cs336_basics.Tokenizer.tokenizer import tokenizer
 from cs336_basics.checkpointing import load_checkpoint
 from cs336_basics.transformer_component import transformer_lm
 from cs336_basics.optimizer import AdamW
+from configs.base import base_config, BaseConfig
 
-def main():
-        context_length = 256
-        num_layers = 4
-        d_model = 512
-        d_ff = int((d_model * 8 / 3 // 64) * 64)
-        device = "cuda:3"
-        dtype = torch.float32
-        rope_theta = 10000
-        num_heads = 16
-        max_new_tokens = 2048
-        temperature = 1
-        top_p = 0.3
+def main(
+        running_config : BaseConfig = base_config,
+        max_new_tokens: int = 2048,
+        temperature: int = 1,
+        top_p:float = 0.3
+        ):
         infer_tokenizer = tokenizer.from_files("./data/owt_vocab.json", "./data/owt_merges.txt", ["<|endoftext|>"])
         infer_transformer_lm = transformer_lm(
                                 len(infer_tokenizer.vocab),
-                                context_length,
-                                num_layers,
-                                d_model,
-                                d_ff,
-                                rope_theta,
-                                num_heads
-                                ).to(device)
+                                running_config.context_length,
+                                running_config.num_layers,
+                                running_config.d_model,
+                                running_config.d_ff,
+                                running_config.rope_theta,
+                                running_config.num_heads
+                                ).to(running_config.device)
         opt = AdamW(infer_transformer_lm.parameters())
         load_checkpoint("./data/checkpoint/ckpt_final.pt",
                         infer_transformer_lm,
                         opt,
-                        device)
+                        running_config.device)
         prompts = input()
-        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.long).to(device)
+        prompts_id = torch.tensor(infer_tokenizer.encode(prompts), dtype = torch.long).to(running_config.device)
         output_token_id_list = []
         for new_token_id in generate(infer_transformer_lm, prompts_id, max_new_tokens, temperature, top_p, infer_tokenizer.reverse_vocab["<|endoftext|>".encode("utf-8")], context_length):
             output_token_id_list.append(new_token_id)
@@ -67,4 +62,5 @@ def generate(model, prompts_ids, max_new_tokens, temperature, top_p, eos_token_i
                 prompts_ids = torch.cat((prompts_ids, target_idx), dim = 0)
 
 if __name__ == "__main__":
-    main()
+    running_config = base_config
+    main(base_config)
