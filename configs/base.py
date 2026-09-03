@@ -5,7 +5,7 @@ from pathlib import Path
 @dataclass
 class BaseConfig:
     lr: float = 1e-3
-    steps: int = 16000
+    steps: int = 160000
     batch_size : int = 64
     num_layers: int = 12
     num_heads: int = 12
