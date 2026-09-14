@@ -2,6 +2,19 @@
 cs336-spring2024-assignment-2-submission.zip
 test_results.xml
 
+# Local profiling artifacts may contain paths and environment metadata.
+/results/
+/nsys-reports/
+/memory-reports/
+/nsys-results.*/
+*.nsys-rep
+*.qdstrm
+*.sqlite
+*.sqlite-journal
+*.pickle*
+.DS_Store
+/.claude/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
