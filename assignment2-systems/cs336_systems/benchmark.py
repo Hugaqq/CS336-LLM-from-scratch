@@ -77,19 +77,22 @@ def benchmark_test_compute_performance(
             opt.zero_grad()
 
          with torch.autocast(device_type = "cuda", dtype = torch.bfloat16, enabled = autocast_flag):
-            res = benchmark_transformer_lm(x)
+            with nvtx.range("forward"):
+               res = benchmark_transformer_lm(x)
             if forward_only is False:
-               loss = cross_entropy(res, targets)
+               with nvtx.range("loss compute"):
+                  loss = cross_entropy(res, targets)
 
          if forward_only:
             del res
          
-         if fandb:
-            loss.backward()
+         if forward_only is False:
+            with nvtx.range("backward"):
+               loss.backward()
 
          if full:
-            loss.backward()
-            opt.step()
+            with nvtx.range("step"):
+               opt.step()
 
          torch.cuda.synchronize(device = running_config.device)
          t1 = default_timer()
