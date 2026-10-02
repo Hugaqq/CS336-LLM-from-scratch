@@ -63,6 +63,8 @@ def main():
             environment["CUDA_VISIBLE_DEVICES"] = str(selected)
             environment["PYTHONPATH"] = str(source_dir)
             environment["TMPDIR"] = str(working)
+            environment["TORCHINDUCTOR_CACHE_DIR"] = str(working / "inductor")
+            environment["TRITON_CACHE_DIR"] = str(working / "triton")
             environment["PYTHONUNBUFFERED"] = "1"
             assert environment.get("PYTORCH_NO_CUDA_MEMORY_CACHING") != "1"
             attempt_dir = run_dir / "attempts" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

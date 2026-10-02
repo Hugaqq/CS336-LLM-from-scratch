@@ -39,14 +39,19 @@ cs336_basics.model.scaled_dot_product_attention = annotated_scaled_dot_product_a
 
 def benchmark_test_compute_performance(
       running_config: Config,
+      is_compiled: bool = False,
       forward_only: bool = False,
       fandb: bool = False,
       full: bool = False,
       autocast_flag: bool = False
       ):
-   benchmark_transformer_lm = BasicsTransformerLM(running_config.vocab_size, running_config.context_length, running_config.d_model, running_config.num_layers, running_config.num_heads, running_config.d_ff).to(running_config.device, running_config.dtype)
+   
+   base_model = BasicsTransformerLM(running_config.vocab_size, running_config.context_length, running_config.d_model, running_config.num_layers, running_config.num_heads, running_config.d_ff).to(running_config.device, running_config.dtype)
+   if(is_compiled):
+      benchmark_transformer_lm = torch.compile(base_model)
+   else : benchmark_transformer_lm = base_model
 
-   opt = AdamW(benchmark_transformer_lm.parameters())
+   opt = AdamW(base_model.parameters())
    x = torch.randint(0, running_config.vocab_size, size = (running_config.batch_size, running_config.context_length)).to(device = running_config.device)
    targets = torch.randint(0, running_config.vocab_size, size = (running_config.batch_size, running_config.context_length)).to(device = running_config.device)
    
@@ -67,7 +72,6 @@ def benchmark_test_compute_performance(
       torch.cuda.synchronize(device = running_config.device)
 
    t_whole = []
-
    
    for _ in range(running_config.tests):
       torch.cuda.synchronize(device = running_config.device)
@@ -106,6 +110,7 @@ def benchmark_test_compute_performance(
 
 def benchmark_test_memory_performance(
       running_config: Config,
+      is_compiled : bool = False,
       forward_only: bool = False,
       fandb: bool = False,
       full: bool = False,
@@ -170,6 +175,7 @@ def main():
    parser.add_argument("--memory_test", action = "store_true")
    parser.add_argument("--autocast", action = "store_true")
    parser.add_argument("--suffix", type = str, default = "0")
+   parser.add_argument("--is_compiled", action=argparse.BooleanOptionalAction, default=True)
 
    args = parser.parse_args()
 
@@ -178,9 +184,9 @@ def main():
    running_config = Config._from_size(args.size, device = args.device, context_length = args.context_length)
 
    if args.compute_test:
-      benchmark_test_compute_performance(running_config, args.forward_only, args.fandb, args.full, args.autocast)
+      benchmark_test_compute_performance(running_config, args.is_compiled, args.forward_only, args.fandb, args.full, args.autocast)
    if args.memory_test:
-      benchmark_test_memory_performance(running_config, args.forward_only, args.fandb, args.full, args.autocast, args.suffix)
+      benchmark_test_memory_performance(running_config, args.is_compiled, args.forward_only, args.fandb, args.full, args.autocast, args.suffix)
 
 if __name__ == "__main__":
    main()

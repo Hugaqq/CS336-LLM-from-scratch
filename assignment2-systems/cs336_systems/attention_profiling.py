@@ -18,10 +18,11 @@ batch_size = 8
 warm_up_times = 5
 test_times = 100
 device = "cuda"
+is_compiled = True
 
 @nvtx.range("scaled dot product attention")
 def annotated_scaled_dot_product_attention(
-    Q: Float[Tensor, "...queries d_k"],
+    Q: Float[Tensor, "... queries d_k"],
     K: Float[Tensor, "... keys   d_k"],
     V: Float[Tensor, "... keys   d_v"],
     mask: Bool[Tensor, "... queries keys"] | None = None,
@@ -43,6 +44,10 @@ def annotated_scaled_dot_product_attention(
 
 def main():
     compiled_annotated_scaled_dot_product_attention = torch.compile(annotated_scaled_dot_product_attention)
+    if(is_compiled) :
+        test_annotated_scaled_dot_product_attention = compiled_annotated_scaled_dot_product_attention
+    else : test_annotated_scaled_dot_product_attention = annotated_scaled_dot_product_attention
+    
     d_model_list = [16, 32, 64, 128]
     seq_len_list = [256, 1024, 4096, 8192, 16384]
     index = 0
@@ -61,7 +66,7 @@ def main():
 
             with nvtx.range("warm up"):
                 for i in range(warm_up_times):
-                    atten_res = compiled_annotated_scaled_dot_product_attention(test_Q, test_K, test_V)
+                    atten_res = test_annotated_scaled_dot_product_attention(test_Q, test_K, test_V)
                     atten_res.backward(gradient=upstream_res)
                     test_K.grad = None
                     test_Q.grad = None
@@ -72,7 +77,7 @@ def main():
                     torch.cuda.synchronize(device = device)
                     t0 = default_timer()
                     with nvtx.range("forwarding"):
-                        atten_res = compiled_annotated_scaled_dot_product_attention(test_Q, test_K, test_V)
+                        atten_res = test_annotated_scaled_dot_product_attention(test_Q, test_K, test_V)
                     torch.cuda.synchronize(device = device)
                     t1 = default_timer()
                     
