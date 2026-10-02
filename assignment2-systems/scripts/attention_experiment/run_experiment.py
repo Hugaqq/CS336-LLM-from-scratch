@@ -180,6 +180,8 @@ def run_all(output_dir):
                 print(f"{name}: {record['status']}", flush=True)
     subprocess.run([sys.executable, str(Path(__file__).with_name("run_transformer_experiment.py")),
                     "--output", str(output_dir / "transformer")], check=True)
+    subprocess.run([sys.executable, str(Path(__file__).with_name("verify_results.py")),
+                    "--attempt", str(output_dir), "--source", str(Path(__file__).parent)], check=True)
 
 
 if __name__ == "__main__":

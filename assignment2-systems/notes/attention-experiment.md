@@ -76,6 +76,12 @@ SSH 别名使用本地 SOCKS5 ProxyCommand，上传、查询和下载均使用�
 `transformer/` 保存完整模型的汇总、对照表和各配置日志。
 实际版本、显卡、源码 SHA256 和运行状态以这些文件为依据。
 
+完成全部测量后自动执行 `verify_results.py`，检查 40 项 attention、
+30 项 Transformer、六组正确性检查、各成功 attention 配置的 100 次样本，
+以及源码、原始日志和对照表的一致性。真实 OOM 数量根据结果统计。
+只有完整性检查通过才生成 `validation.json`，并允许运行入口成功结束；
+等待服务随后结合运行期间的显卡进程检查写入最终状态。
+
 取消远程等待任务：
 
 `ssh zju-lab-rvpn 'systemctl --user stop cs336-attention-20261003-0207.service'`
